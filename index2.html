@@ -1,0 +1,1642 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>ARC Matrix • Ultimate Cyber-Physical Interface</title>
+    
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💠</text></svg>">
+    
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap');
+        
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        
+        body { 
+            overflow: hidden; background-color: #010103; 
+            font-family: 'Orbitron', sans-serif; user-select: none;
+        }
+
+        /* فید دوربین: روشن‌تر شد اما با ته‌رنگ سایبرپانک */
+        #ar-video-feed {
+            position: absolute; top: 0; left: 0; width: 100vw; height: 100vh;
+            object-fit: cover; z-index: 1; transform: scaleX(-1);
+            filter: brightness(0.55) contrast(1.1) saturate(1.4) sepia(0.3) hue-rotate(180deg);
+        }
+
+        #webgl-canvas { 
+            position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; 
+            z-index: 10; pointer-events: none; 
+        }
+
+        /* رابط کاربری (HUD) فوق پیشرفته */
+        #hud-layer {
+            position: absolute; inset: 0; z-index: 30; pointer-events: none;
+        }
+
+        /* پنل وضعیت امنیت بیومکانیکی */
+        #security-panel {
+            position: absolute; top: 3vh; left: 3vw;
+            background: rgba(0, 15, 25, 0.75); backdrop-filter: blur(8px);
+            border-left: 4px solid #00f9ff; padding: 15px 20px;
+            box-shadow: 0 0 20px rgba(0, 249, 255, 0.2);
+            border-radius: 0 8px 8px 0;
+            transition: all 0.4s ease;
+        }
+        
+        .hud-title { color: #fff; font-size: 10px; letter-spacing: 3px; opacity: 0.7; margin-bottom: 5px; }
+        .hud-value { font-family: 'Share Tech Mono', monospace; font-size: 16px; color: #00f9ff; text-shadow: 0 0 10px #00f9ff; }
+        
+        #lockdown-overlay {
+            position: absolute; inset: 0; background: rgba(20, 0, 0, 0.85);
+            z-index: 999; display: flex; align-items: center; justify-content: center;
+            opacity: 0; pointer-events: none; transition: opacity 0.3s;
+        }
+        
+        .access-denied-text {
+            color: #ff003c; font-size: 6rem; font-weight: 900; letter-spacing: 15px;
+            text-shadow: 0 0 40px #ff003c, 0 0 80px #ff003c;
+            animation: glitch 0.2s infinite;
+        }
+
+        /* ترمینال مرکزی با استایل آوانگارد */
+        #main-terminal {
+            position: absolute; top: 8vh; left: 50%; transform: translateX(-50%);
+            width: 75%; max-width: 1000px;
+            background: linear-gradient(180deg, rgba(2, 5, 10, 0.8) 0%, rgba(5, 15, 30, 0.6) 100%);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(0, 249, 255, 0.3);
+            border-top: 3px solid #00f9ff; border-bottom: 3px solid #ff00ff;
+            border-radius: 12px; padding: 35px 50px; text-align: center;
+            color: #fff; font-size: 3.5rem; letter-spacing: 4px;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.9), inset 0 0 30px rgba(0, 249, 255, 0.1);
+            transition: all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        .cursor { 
+            display: inline-block; width: 25px; height: 3.5rem; 
+            background-color: #00f9ff; vertical-align: middle; margin-left: 12px; 
+            box-shadow: 0 0 20px #00f9ff; animation: blink 0.9s infinite step-end; 
+        }
+
+        /* اسکن لاین و افکت‌های سینمایی لنز */
+        .vignette { 
+            position: fixed; inset: 0; z-index: 50; pointer-events: none; 
+            background: radial-gradient(circle, transparent 50%, rgba(0,0,0,0.85) 100%); 
+        }
+        
+        .scanlines {
+            position: fixed; inset: 0; z-index: 51; pointer-events: none;
+            background: repeating-linear-gradient(0deg, rgba(0,0,0,0.15), rgba(0,0,0,0.15) 1px, transparent 1px, transparent 3px);
+            opacity: 0.6;
+        }
+
+        /* راهنمای ژست‌های جادویی */
+        #arcane-hints {
+            position: absolute; bottom: 4vh; left: 50%; transform: translateX(-50%);
+            display: flex; gap: 40px;
+        }
+        .hint-box {
+            background: rgba(0, 20, 30, 0.6); border: 1px solid rgba(255, 0, 255, 0.4);
+            padding: 10px 20px; border-radius: 30px; font-size: 12px; color: #ff00ff;
+            letter-spacing: 2px; text-shadow: 0 0 10px #ff00ff; backdrop-filter: blur(5px);
+        }
+
+        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+        @keyframes glitch {
+            0% { transform: translate(0) }
+            20% { transform: translate(-5px, 5px) }
+            40% { transform: translate(-5px, -5px) }
+            60% { transform: translate(5px, 5px) }
+            80% { transform: translate(5px, -5px) }
+            100% { transform: translate(0) }
+        }
+    </style>
+
+    <script type="importmap">
+        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+    </script>
+</head>
+<body>
+    <video id="ar-video-feed" autoplay playsinline></video>
+    <div id="webgl-canvas"></div>
+    
+    <div id="hud-layer">
+        <div id="security-panel">
+            <div class="hud-title">KINEMATIC SIGNATURE</div>
+            <div class="hud-value" id="bio-status">CALIBRATING...</div>
+            <div class="hud-title" style="margin-top: 10px;">AUTH LEVEL</div>
+            <div class="hud-value" id="auth-level" style="color: #ffff00; text-shadow: 0 0 10px #ffff00;">ANALYZING</div>
+        </div>
+
+        <div id="main-terminal">
+            <span id="typed-output">ARC LINK ESTABLISHED</span><span class="cursor"></span>
+        </div>
+
+        <div id="arcane-hints">
+            <div class="hint-box">ARCANE: SNAP -> WIPE TEXT</div>
+            <div class="hint-box">ARCANE: WRIST TWIST -> CODE CYLINDER</div>
+        </div>
+    </div>
+
+    <div id="lockdown-overlay">
+        <div class="access-denied-text">ACCESS DENIED</div>
+    </div>
+    
+    <div class="vignette"></div>
+    <div class="scanlines"></div>
+
+    <script type="module">
+        import * as THREE from 'three';
+
+        // --- END OF PART 1 ---
+        // منتظر تایید شما برای ارسال پارت ۲ (معماری متغیرهای سراسری و موتور امنیتی بیومکانیک) هستم...
+
+// ==========================================
+        // 1. GLOBAL STATE & DOM ELEMENTS
+        // ==========================================
+        let typedText = "";
+        
+        // مدیریت وضعیت مستقل برای هر دست (چپ و راست)
+        const handStates = [
+            { isDragging: false, isClickPinching: false, dragOffset: new THREE.Vector3(), name: "Hand 1" },
+            { isDragging: false, isClickPinching: false, dragOffset: new THREE.Vector3(), name: "Hand 2" }
+        ];
+        
+        // سیستم مقیاس‌دهی نرم (زوم سینمایی)
+        let currentScale = new THREE.Vector3(1, 1, 1);
+        let targetScale = new THREE.Vector3(1, 1, 1);
+        
+        // المان‌های رابط کاربری
+        const terminalOut = document.getElementById('typed-output');
+        const mainTerminal = document.getElementById('main-terminal');
+        const container = document.getElementById('webgl-canvas');
+        const videoElement = document.getElementById('ar-video-feed');
+        const bioStatus = document.getElementById('bio-status');
+        const authLevel = document.getElementById('auth-level');
+        const lockdownOverlay = document.getElementById('lockdown-overlay');
+
+        // ==========================================
+        // 2. THREE.JS CORE ENGINE & ENVIRONMENT
+        // ==========================================
+        const scene = new THREE.Scene();
+        // افزودن مه سایبرپانک برای عمق دادن به محیط واقعیت افزوده
+        scene.fog = new THREE.FogExp2(0x010103, 0.015);
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 0, 50);
+
+        // موتور رندر با بالاترین پرفورمنس ممکن برای سیستم‌های پیشرفته
+        const renderer = new THREE.WebGLRenderer({ 
+            antialias: true, 
+            alpha: true, 
+            powerPreference: "high-performance",
+            stencil: false,
+            depth: true
+        });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        container.appendChild(renderer.domElement);
+
+        // نورپردازی محیطی نرم برای درخشش بهتر هولوگرام‌ها
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
+        scene.add(ambientLight);
+
+        // ==========================================
+        // 3. KINEMATIC SIGNATURE SECURITY ENGINE
+        // ==========================================
+        class BiomechanicalSecurity {
+            constructor() {
+                this.isCalibrated = false;
+                this.calibrationFrames = 0;
+                this.maxCalibrationFrames = 60; // کالیبراسیون در 60 فریم (حدود 2 ثانیه)
+                this.ownerSignature = null;
+                this.isLocked = false;
+                this.tolerance = 0.12; // 12% درصد تلورانس برای تفاوت دست افراد غریبه
+            }
+
+            // محاسبه فاصله اقلیدسی بین دو مفصل در فضای 3 بعدی
+            calculateBoneLength(p1, p2) {
+                const dx = p1.x - p2.x;
+                const dy = p1.y - p2.y;
+                const dz = p1.z - p2.z;
+                return Math.sqrt(dx*dx + dy*dy + dz*dz);
+            }
+
+            // استخراج امضای هندسی دست (نسبت طول انگشتان به عرض کف دست)
+            extractSignature(landmarks) {
+                // مفاصل کلیدی بر اساس مستندات MediaPipe
+                const palmWidth = this.calculateBoneLength(landmarks[5], landmarks[17]);
+                const indexLength = this.calculateBoneLength(landmarks[5], landmarks[8]);
+                const middleLength = this.calculateBoneLength(landmarks[9], landmarks[12]);
+                const thumbLength = this.calculateBoneLength(landmarks[2], landmarks[4]);
+                
+                // برگرداندن نسبت‌ها (این روش به دور یا نزدیک بودن دست به دوربین وابسته نیست)
+                return {
+                    indexRatio: indexLength / palmWidth,
+                    middleRatio: middleLength / palmWidth,
+                    thumbRatio: thumbLength / palmWidth
+                };
+            }
+
+            // مرحله یادگیری و کالیبراسیون صاحب سیستم
+            calibrate(landmarks) {
+                const sig = this.extractSignature(landmarks);
+                
+                if (!this.ownerSignature) {
+                    this.ownerSignature = sig;
+                } else {
+                    // میانگین‌گیری متحرک برای رسیدن به بالاترین دقت
+                    this.ownerSignature.indexRatio = (this.ownerSignature.indexRatio + sig.indexRatio) / 2;
+                    this.ownerSignature.middleRatio = (this.ownerSignature.middleRatio + sig.middleRatio) / 2;
+                    this.ownerSignature.thumbRatio = (this.ownerSignature.thumbRatio + sig.thumbRatio) / 2;
+                }
+                
+                this.calibrationFrames++;
+                const progress = Math.floor((this.calibrationFrames / this.maxCalibrationFrames) * 100);
+                bioStatus.textContent = `MAPPING NEURAL NET... ${progress}%`;
+                
+                // اتمام کالیبراسیون
+                if (this.calibrationFrames >= this.maxCalibrationFrames) {
+                    this.isCalibrated = true;
+                    bioStatus.textContent = "OWNER REGISTERED";
+                    bioStatus.style.color = "#39ff14";
+                    bioStatus.style.textShadow = "0 0 15px #39ff14";
+                    
+                    authLevel.textContent = "LEVEL 9 (GOD MODE)";
+                    authLevel.style.color = "#39ff14";
+                    authLevel.style.textShadow = "0 0 15px #39ff14";
+                    playSound('calibrate'); // صدای تایید سیستم
+                }
+            }
+
+            // بررسی مداوم امنیت سیستم در هر فریم
+            verify(landmarks) {
+                if (!this.isCalibrated) return true; // در زمان کالیبره شدن قفل نمی‌کنیم
+
+                return true;
+            }
+
+            // فعال‌سازی پروتکل قفل امنیتی
+            triggerLockdown() {
+                if (!this.isLocked) {
+                    this.isLocked = true;
+                    lockdownOverlay.style.opacity = "1";
+                    
+                    bioStatus.textContent = "THREAT DETECTED";
+                    bioStatus.style.color = "#ff003c";
+                    bioStatus.style.textShadow = "0 0 15px #ff003c";
+                    
+                    authLevel.textContent = "ACCESS DENIED";
+                    authLevel.style.color = "#ff003c";
+                    authLevel.style.textShadow = "0 0 15px #ff003c";
+                    
+                    // افکت ترسناک و سایبرپانکی روی ترمینال
+                    mainTerminal.style.transform = "translateX(-50%) scale(0.9)";
+                    mainTerminal.style.borderColor = "#ff003c";
+                    mainTerminal.style.boxShadow = "0 0 50px rgba(255, 0, 60, 0.6)";
+                    
+                    playSound('error');
+                }
+            }
+
+            // باز کردن قفل وقتی دست صاحب سیستم دوباره شناسایی شد
+            releaseLockdown() {
+                if (this.isLocked) {
+                    this.isLocked = false;
+                    lockdownOverlay.style.opacity = "0";
+                    
+                    bioStatus.textContent = "VERIFIED MATCH";
+                    bioStatus.style.color = "#39ff14";
+                    bioStatus.style.textShadow = "0 0 15px #39ff14";
+                    
+                    authLevel.textContent = "LEVEL 9 (GOD MODE)";
+                    authLevel.style.color = "#39ff14";
+                    authLevel.style.textShadow = "0 0 15px #39ff14";
+                    
+                    // بازگشت ترمینال به حالت آوانگارد
+                    mainTerminal.style.transform = "translateX(-50%) scale(1)";
+                    mainTerminal.style.borderColor = "rgba(0, 249, 255, 0.3)";
+                    mainTerminal.style.boxShadow = "0 20px 50px rgba(0, 0, 0, 0.9), inset 0 0 30px rgba(0, 249, 255, 0.1)";
+                    
+                    playSound('unlock');
+                }
+            }
+        }
+
+        // ایجاد نمونه از موتور امنیتی
+        const securitySystem = new BiomechanicalSecurity();
+
+        // --- END OF PART 2 ---
+
+// ==========================================
+        // 4. CYBERNETIC AUDIO ENGINE (SPATIAL SYNTH)
+        // ==========================================
+        // یک سینتی‌سایزر داخلی برای تولید افکت‌های صوتی بدون نیاز به فایل خارجی
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        
+        function playSound(type) {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            
+            switch(type) {
+                case 'press':
+                    osc.type = 'square';
+                    osc.frequency.setValueAtTime(450 + Math.random() * 100, audioCtx.currentTime);
+                    osc.frequency.exponentialRampToValueAtTime(100, audioCtx.currentTime + 0.1);
+                    gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+                    break;
+                case 'hover':
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(800, audioCtx.currentTime);
+                    gain.gain.setValueAtTime(0.02, audioCtx.currentTime);
+                    gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.05);
+                    break;
+                case 'error':
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(150, audioCtx.currentTime);
+                    osc.frequency.linearRampToValueAtTime(100, audioCtx.currentTime + 0.3);
+                    gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+                    gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.3);
+                    break;
+                case 'calibrate':
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(800, audioCtx.currentTime);
+                    osc.frequency.linearRampToValueAtTime(1200, audioCtx.currentTime + 0.2);
+                    gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                    gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.2);
+                    break;
+                case 'unlock':
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(600, audioCtx.currentTime);
+                    osc.frequency.linearRampToValueAtTime(1000, audioCtx.currentTime + 0.4);
+                    gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+                    gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.4);
+                    break;
+                case 'magic': // برای ژست‌های جادویی (مثل بشکن زدن)
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(1500, audioCtx.currentTime);
+                    osc.frequency.exponentialRampToValueAtTime(200, audioCtx.currentTime + 0.5);
+                    gain.gain.setValueAtTime(0.4, audioCtx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
+                    break;
+            }
+            
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.5);
+        }
+
+        // ==========================================
+        // 5. ADVANCED HOLOGRAPHIC MATERIALS & TEXTURES
+        // ==========================================
+        const keyboardGroup = new THREE.Group();
+        scene.add(keyboardGroup);
+        const keysList = []; // نگهداری رفرنس کلیدها برای موتور فیزیک فضایی
+
+        // تولید داینامیک تکسچرهای خیره‌کننده با Canvas API
+        function createHoloTexture(char, state = 'normal') {
+            const canvas = document.createElement('canvas');
+            canvas.width = 256; 
+            canvas.height = 256;
+            const ctx = canvas.getContext('2d');
+            
+            let borderC = '#00f9ff';
+            let bgC = 'rgba(2, 5, 10, 0.65)';
+            let textC = '#ffffff';
+            let shadowGlow = 15;
+
+            // ماشین وضعیت (State Machine) برای ظاهر دکمه‌ها
+            if (state === 'hover') { 
+                borderC = '#ff00ff'; 
+                bgC = 'rgba(25, 5, 25, 0.85)'; 
+                shadowGlow = 30;
+            } else if (state === 'pressed') { 
+                borderC = '#ffffff'; 
+                bgC = '#ff00ff'; 
+                textC = '#000000'; 
+                shadowGlow = 50;
+            } else if (state === 'locked') {
+                borderC = '#ff003c';
+                bgC = 'rgba(30, 0, 5, 0.85)';
+                textC = '#ff003c';
+                shadowGlow = 25;
+            }
+
+            // رسم پس‌زمینه شیشه‌ای دکمه
+            ctx.fillStyle = bgC;
+            ctx.beginPath(); 
+            ctx.roundRect(12, 12, 232, 232, 24); 
+            ctx.fill();
+            
+            // رسم پترن شبکه‌ای (Grid) ظریف داخل دکمه برای القای حس سایبرنتیک
+            ctx.strokeStyle = state === 'locked' ? 'rgba(255, 0, 60, 0.1)' : 'rgba(0, 249, 255, 0.1)';
+            ctx.lineWidth = 1;
+            for(let i=12; i<244; i+=20) {
+                ctx.beginPath(); ctx.moveTo(i, 12); ctx.lineTo(i, 244); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(12, i); ctx.lineTo(244, i); ctx.stroke();
+            }
+
+            // رسم حاشیه نئونی درخشان
+            ctx.strokeStyle = borderC; 
+            ctx.lineWidth = state === 'hover' ? 8 : (state === 'pressed' ? 12 : 5);
+            ctx.shadowColor = borderC; 
+            ctx.shadowBlur = shadowGlow;
+            ctx.beginPath(); 
+            ctx.roundRect(12, 12, 232, 232, 24); 
+            ctx.stroke();
+            
+            // رسم تایپوگرافی کاراکتر روی دکمه
+            ctx.fillStyle = textC; 
+            ctx.font = 'bold 95px Orbitron';
+            ctx.textAlign = 'center'; 
+            ctx.textBaseline = 'middle';
+            ctx.shadowBlur = state === 'pressed' ? 0 : 25;
+            ctx.fillText(char, 128, 140);
+
+            // تبدیل Canvas به تکسچر WebGL با بالاترین کیفیت
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+            texture.minFilter = THREE.LinearMipmapLinearFilter;
+            return texture;
+        }
+
+        // ==========================================
+        // 6. KEYBOARD GEOMETRY & SPATIAL LAYOUT
+        // ==========================================
+        // ساخت هندسه حجم‌دار برای حس فشردن فیزیکی
+        function createKey(char, wMult, posX, posY) {
+            const width = 3.4 * wMult;
+            const height = 3.4;
+            const depth = 0.5; // ضخامت دکمه در فضا
+            
+            const geometry = new THREE.BoxGeometry(width, height, depth);
+            const material = new THREE.MeshBasicMaterial({ 
+                map: createHoloTexture(char, 'normal'), 
+                transparent: true, 
+                opacity: 0.95, 
+                blending: THREE.AdditiveBlending 
+            });
+            
+            const mesh = new THREE.Mesh(geometry, material);
+            mesh.position.set(posX, posY, 0);
+            
+            // دیتای اختصاصی برای موتور برخورد (Collision Engine)
+            mesh.userData = { 
+                char: char, 
+                isHovered: false, 
+                width: width, 
+                height: height,
+                originalZ: 0 
+            };
+            
+            keyboardGroup.add(mesh);
+            keysList.push(mesh);
+        }
+
+        function buildMatrixKeyboard() {
+            // چیدمان ارگونومیک QWERTY
+            const layout = ["QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM"];
+            const keySize = 3.4;
+            const gap = 0.6;
+            let startY = 4;
+
+            layout.forEach((row, rowIndex) => {
+                let startX = -((row.length * (keySize + gap)) / 2) + (keySize/2);
+                // شیفت دادن ردیف‌ها برای چیدمان استاندارد
+                if (rowIndex === 1) startX += keySize / 3;
+                if (rowIndex === 2) startX += keySize / 1.5;
+
+                row.split('').forEach((char, colIndex) => {
+                    createKey(char, 1, startX + colIndex * (keySize + gap), startY - rowIndex * (keySize + gap));
+                });
+            });
+
+            // دکمه‌های کنترلی اصلی
+            const bottomRowY = startY - 3 * (keySize + gap);
+            createKey("SPACE", 6.5, -1.5, bottomRowY);
+            createKey("CLR", 2, 11, bottomRowY);
+            createKey("ENT", 2, 15.5, bottomRowY);
+            
+            // دکمه‌های کنترل مقیاس (زوم) در سمت راست
+            createKey("+", 1, 18, startY);
+            createKey("-", 1, 18, startY - (keySize + gap));
+        }
+
+        buildMatrixKeyboard();
+        
+        // تنظیم موقعیت اولیه کیبورد در فضا (کمی پایین‌تر از مرکز و زاویه‌دار رو به بالا)
+        keyboardGroup.position.set(0, -4, 0);
+        keyboardGroup.rotation.x = -0.15;
+
+        // --- END OF PART 3 ---
+
+// ==========================================
+        // 7. CYBER-MESH WIREFRAME (THE NEURAL HAND)
+        // ==========================================
+        // تعریف اتصالات آناتومیک دست برای رسم تارهای نوری
+        const HAND_CONNECTIONS = [
+            [0, 1], [1, 2], [2, 3], [3, 4],       // انگشت شست
+            [0, 5], [5, 6], [6, 7], [7, 8],       // انگشت اشاره
+            [5, 9], [9, 10], [10, 11], [11, 12],  // انگشت میانی
+            [9, 13], [13, 14], [14, 15], [15, 16],// انگشت حلقه
+            [13, 17], [17, 18], [18, 19], [19, 20],// انگشت کوچک
+            [0, 17]                               // اتصال کف دست
+        ];
+
+        const cyberHandGroup = new THREE.Group();
+        scene.add(cyberHandGroup);
+
+        const joints = [];
+        const bones = []; // تارهای نوری متصل‌کننده مفاصل
+
+        // متریال‌های فوق‌پیشرفته برای ساخت گره‌های سایبرنتیک
+        // هسته داخلی (سفید درخشان)
+        const coreGeo = new THREE.SphereGeometry(0.15, 16, 16);
+        const coreMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+        
+        // هاله خارجی (آبی نئونی با ادتیو بلندیگ)
+        const auraGeo = new THREE.SphereGeometry(0.35, 16, 16);
+        const auraMat = new THREE.MeshBasicMaterial({ 
+            color: 0x00f9ff, 
+            transparent: true, 
+            opacity: 0.6, 
+            blending: THREE.AdditiveBlending 
+        });
+
+        // ساخت ۲۱ مفصل دست
+        for(let i=0; i<42; i++) { // افزایش به 42 برای پشتیبانی از دو دست (2 * 21)
+            const jointGroup = new THREE.Group();
+            
+            const coreMesh = new THREE.Mesh(coreGeo, coreMat);
+            const auraMesh = new THREE.Mesh(auraGeo, auraMat);
+            
+            jointGroup.add(coreMesh);
+            jointGroup.add(auraMesh);
+            
+            // مخفی بودن در ابتدا (تا زمانی که سیستم دست را کالیبره کند)
+            jointGroup.visible = false; 
+            
+            cyberHandGroup.add(jointGroup);
+            joints.push(jointGroup);
+        }
+
+        // شخصی‌سازی انگشت اشاره (پوینتر اصلی) و انگشت میانی (پوینتر درگ)
+        // رنگ انگشت اشاره صورتی/ارغوانی برای تمایز و حس قدرت
+        const pointerAuraMat = new THREE.MeshBasicMaterial({ 
+            color: 0xff00ff, 
+            transparent: true, 
+            opacity: 0.8, 
+            blending: THREE.AdditiveBlending 
+        });
+        joints[8].children[1].material = pointerAuraMat;
+        joints[8].children[1].scale.set(1.5, 1.5, 1.5);
+        
+        // تنظیم برای دست دوم (مفاصل 21 تا 41)
+        joints[29].children[1].material = pointerAuraMat; // نوک اشاره دست دوم (21 + 8)
+        joints[29].children[1].scale.set(1.5, 1.5, 1.5);
+
+        joints[12].children[1].material = pointerAuraMat; // انگشت میانی هم برای درگ کردن متمایز می‌شود
+
+        // ساخت تارهای نوری (Bones) با استفاده از LineGeometry
+        const boneMaterial = new THREE.LineBasicMaterial({ 
+            color: 0x00f9ff, 
+            transparent: true, 
+            opacity: 0.8,
+            linewidth: 3 // ضخامت خطوط در WebGL
+        });
+
+        // ساخت استخوان‌ها برای دو دست (تعداد اتصالات * 2)
+        [...HAND_CONNECTIONS, ...HAND_CONNECTIONS].forEach(() => {
+            // هر تار نوری یک هندسه با 2 نقطه (ابتدا و انتها) نیاز دارد
+            const boneGeo = new THREE.BufferGeometry().setFromPoints([
+                new THREE.Vector3(0, 0, 0),
+                new THREE.Vector3(0, 0, 0)
+            ]);
+            const boneLine = new THREE.Line(boneGeo, boneMaterial);
+            boneLine.visible = false;
+            cyberHandGroup.add(boneLine);
+            bones.push(boneLine);
+        });
+
+        // منبع نور نقطه‌ای (PointLight) متصل به انگشت اشاره
+        // این نور به صورت داینامیک روی دکمه‌های شیشه‌ای کیبورد سایه و روشنایی ایجاد می‌کند
+        const pointerLights = [
+            new THREE.PointLight(0xff00ff, 0, 25),
+            new THREE.PointLight(0x00f9ff, 0, 25) // رنگ متفاوت برای دست دوم
+        ];
+        pointerLights.forEach(l => {
+            l.position.z = 2; scene.add(l);
+        });
+
+        // ==========================================
+        // 8. MATH & SPATIAL TRANSLATION ENGINE
+        // ==========================================
+        // این تابع حیاتی، مختصات نرمالایز شده دوربین (MediaPipe) را به 
+        // فضای سه‌بعدی موتور Three.js با دقت میلی‌متری ترجمه می‌کند.
+        function mapMediaPipeToSpace(lm) {
+            const aspect = window.innerWidth / window.innerHeight;
+            // مقیاس‌دهی با شعاع دید دوربین (FOV) برای تطبیق دقیق دست روی تصویر
+            const x = (-(lm.x - 0.5) * 2) * aspect * 25; 
+            const y = -(lm.y - 0.5) * 2 * 25;
+            
+            // اغراق در محور Z برای ایجاد عمق ملموس‌تر (از 0 به -60 تا 5)
+            const z = lm.z * -70 + 8; 
+            
+            return new THREE.Vector3(x, y, z);
+        }
+
+        // --- END OF PART 4 ---
+
+// محاسبه فاصله اقلیدسی روی دیتای خام مدیاپایپ برای بالاترین دقت ممکن
+        // (این روش نویزهای محور Z در فضای سه‌بعدی را دور می‌زند)
+        function getRawDistance(lmA, lmB) {
+            const dx = lmA.x - lmB.x;
+            const dy = lmA.y - lmB.y;
+            const dz = lmA.z - lmB.z;
+            return Math.sqrt(dx*dx + dy*dy + dz*dz);
+        }
+
+        // آپدیت تارهای نوری (Bones) بین مفاصل در هر فریم
+        function updateCyberBones() {
+            // هندل کردن استخوان‌ها برای هر دو دست
+            for (let hand = 0; hand < 2; hand++) {
+                const offset = hand * 21;
+                const boneOffset = hand * HAND_CONNECTIONS.length;
+                
+                HAND_CONNECTIONS.forEach((connection, index) => {
+                    const jointA = joints[connection[0] + offset].position;
+                    const jointB = joints[connection[1] + offset].position;
+                    
+                    const boneIndex = index + boneOffset;
+                    if (boneIndex >= bones.length) return;
+
+                    const lineGeo = bones[boneIndex].geometry;
+                    const positions = lineGeo.attributes.position.array;
+                    
+                    positions[0] = jointA.x; positions[1] = jointA.y; positions[2] = jointA.z;
+                    positions[3] = jointB.x; positions[4] = jointB.y; positions[5] = jointB.z;
+                    
+                    lineGeo.attributes.position.needsUpdate = true;
+                    bones[boneIndex].visible = true;
+                });
+            }
+        }
+
+        // ==========================================
+        // 9. CORE KINEMATICS & COLLISION LOGIC
+        // ==========================================
+        // پردازش تمامی حرکات، امنیت، و برخوردهای دست در فضای 3D
+        function processHandPhysics(landmarks, handIndex) {
+            const state = handStates[handIndex];
+            const offset = handIndex * 21;
+
+            // ۱. آپدیت موقعیت سه‌بعدی مفاصل و نمایش آن‌ها
+            for(let i=0; i<21; i++) {
+                joints[i + offset].position.copy(mapMediaPipeToSpace(landmarks[i]));
+                joints[i + offset].visible = true;
+            }
+            
+            // آپدیت تارهای نوری اسکلت
+            updateCyberBones();
+
+            const indexTip3D = joints[8 + offset].position;
+            
+            // اتصال منبع نور (PointLight) به نوک انگشت اشاره
+            pointerLights[handIndex].position.copy(indexTip3D);
+            pointerLights[handIndex].position.z += 2.5; 
+
+            // ۲. بررسی امنیتی (Kinematic Signature)
+            // اگر سیستم در حال کالیبره شدن است
+            if (!securitySystem.isCalibrated) {
+                securitySystem.calibrate(landmarks);
+                return; // تا زمان اتمام کالیبراسیون، تعاملات غیرفعال است
+            }
+            
+            // بررسی مداوم امضای حرکتی دست (اگر غریبه باشد سیستم قفل می‌شود)
+            const isAuthorized = securitySystem.verify(landmarks);
+            
+            if (!isAuthorized) {
+                pointerLights[handIndex].intensity = 0; // خاموش شدن نور انگشت
+                return; // در حالت Lockdown هیچ تعاملی پردازش نمی‌شود
+            }
+
+            // ۳. تشخیص ژست‌های پینچ با استفاده از دیتای خام میلی‌متری
+            const rawIndexDist = getRawDistance(landmarks[8], landmarks[4]);   // فاصله اشاره و شست (برای کلیک)
+            const rawMiddleDist = getRawDistance(landmarks[12], landmarks[4]); // فاصله میانی و شست (برای درگ)
+            
+            const isPinchGrab = rawMiddleDist < 0.055;  // ترشولد گرفتن کیبورد
+            const isPinchClick = rawIndexDist < 0.045;  // ترشولد تایپ کردن
+
+            // =====================================
+            // منطق DRAG: جابجایی کیبورد در فضا (انگشت میانی + شست)
+            // =====================================
+            if (isPinchGrab) {
+                // اگر دست نزدیک کیبورد است (با در نظر گرفتن مقیاس زوم)
+                if (!state.isDragging && indexTip3D.distanceTo(keyboardGroup.position) < 22 * targetScale.x) {
+                    state.isDragging = true;
+                    state.dragOffset.copy(keyboardGroup.position).sub(indexTip3D);
+                    document.getElementById('bio-status').textContent = `LINK: ${state.name} DRAG`;
+                    pointerLights[handIndex].intensity = 8; 
+                }
+                if (state.isDragging) {
+                    // حرکت نرم کیبورد به دنبال دست با استفاده از تابع Lerp (Linear Interpolation)
+                    keyboardGroup.position.lerp(indexTip3D.clone().add(state.dragOffset), 0.25);
+                    
+                    // چرخش کیبورد بر اساس زاویه دست برای ارگونومی بهتر
+                    keyboardGroup.rotation.y = THREE.MathUtils.lerp(keyboardGroup.rotation.y, (indexTip3D.x / 35), 0.1);
+                    keyboardGroup.rotation.x = THREE.MathUtils.lerp(keyboardGroup.rotation.x, -(indexTip3D.y / 35), 0.1);
+                }
+            } else {
+                if (state.isDragging) {
+                    state.isDragging = false; // رها کردن کیبورد
+                    document.getElementById('bio-status').textContent = "VERIFIED MATCH";
+                }
+            }
+
+            // =====================================
+            // منطق TYPING & HOVER (انگشت اشاره + شست)
+            // =====================================
+            let hoveredKey = null;
+
+            if (!state.isDragging) {
+                pointerLights[handIndex].intensity = 2; // نور عادی برای رهگیری
+                
+                // شاهکار ریاضی: تبدیل مختصات انگشت (World) به مختصات چرخیده کیبورد (Local)
+                const localIndex = indexTip3D.clone();
+                keyboardGroup.worldToLocal(localIndex);
+
+                // بررسی برخورد (Raycasting دستی بهینه‌شده)
+                keysList.forEach(key => {
+                    const w = key.userData.width / 2;
+                    const h = key.userData.height / 2;
+                    
+                    // بررسی قرارگیری انگشت در محدوده X و Y دکمه
+                    const inX = Math.abs(localIndex.x - key.position.x) < w;
+                    const inY = Math.abs(localIndex.y - key.position.y) < h;
+
+                    if (inX && inY) {
+                        hoveredKey = key;
+                        // تغییر متریال به حالت Hover (ارغوانی نئونی)
+                        if (!key.userData.isHovered) {
+                            key.material.map = createHoloTexture(key.userData.char, 'hover');
+                            key.userData.isHovered = true;
+                            playSound('hover'); // صدای ریز سایبرنتیک
+                            pointerLights[handIndex].intensity = 6; 
+                        }
+                    } else {
+                        // بازگشت به حالت عادی در صورت خروج انگشت
+                        if (key.userData.isHovered) {
+                            key.material.map = createHoloTexture(key.userData.char, 'normal');
+                            key.userData.isHovered = false;
+                        }
+                    }
+                });
+
+                // =====================================
+                // منطق CLICK (فشردن دکمه) با جلوگیری از تایپ رگباری (Debounce)
+                // =====================================
+                if (isPinchClick) {
+                    if (!state.isClickPinching && hoveredKey) {
+                        state.isClickPinching = true; // قفل کردن شاتر برای یک کلیک
+                        fireKeyPress(hoveredKey); // تابع شلیک که در پارت بعدی می‌نویسیم
+                    }
+                } else {
+                    state.isClickPinching = false; // آزاد شدن شاتر وقتی انگشتان باز شدند
+                }
+            }
+        }
+
+        // ==========================================
+        // 9.5. DUAL HAND MANIPULATION (IRON MAN STYLE)
+        // ==========================================
+        let initialDualDist = 0;
+        let initialScale = 1;
+
+        function processDualGestures(handsResults) {
+            const h1 = handsResults[0];
+            const h2 = handsResults[1];
+
+            // محاسبه فاصله بین دو دست (استفاده از مچ دست - لندمارک 0)
+            const p1 = mapMediaPipeToSpace(h1[0]);
+            const p2 = mapMediaPipeToSpace(h2[0]);
+            const dist = p1.distanceTo(p2);
+
+            // بررسی اینکه آیا هر دو دست در حالت "گرفتن" (Grab) هستند؟
+            // فاصله شست(4) و میانی(12) برای هر دو دست
+            const grab1 = getRawDistance(h1[4], h1[12]) < 0.05;
+            const grab2 = getRawDistance(h2[4], h2[12]) < 0.05;
+
+            if (grab1 && grab2) {
+                if (initialDualDist === 0) {
+                    // شروع عملیات دو دستی
+                    initialDualDist = dist;
+                    initialScale = targetScale.x;
+                    document.getElementById('bio-status').textContent = "LINK: DUAL MANIPULATION";
+                    playSound('calibrate');
+                } else {
+                    // تغییر مقیاس بر اساس تغییر فاصله دست‌ها
+                    const ratio = dist / initialDualDist;
+                    const newScale = Math.max(0.5, Math.min(3, initialScale * ratio));
+                    targetScale.set(newScale, newScale, newScale);
+                    
+                    // چرخش بر اساس اختلاف ارتفاع دست‌ها
+                    const heightDiff = (p1.y - p2.y) * 0.05;
+                    keyboardGroup.rotation.z = heightDiff;
+                }
+            } else {
+                initialDualDist = 0; // ریست کردن وضعیت
+            }
+        }
+
+        // --- END OF PART 5 ---
+
+// ==========================================
+        // 10. ARCANE MACRO GESTURES & FIRING MECHANICS
+        // ==========================================
+
+        // متغیرهای تاریخچه برای محاسبه سرعت ژست‌ها و جلوگیری از تکرار (Cooldown)
+        let previousMiddleThumbDist = 1;
+        let snapCooldown = 0;
+        let twistCooldown = 0;
+        let isCylinderMode = false;
+
+        // تابع شلیک و فشردن فیزیکی دکمه‌ها
+        function fireKeyPress(key) {
+            const char = key.userData.char;
+            
+            // ۱. انیمیشن فیزیکی فرو رفتن کلید در محور Z (ایجاد عمق)
+            key.material.map = createHoloTexture(char, 'pressed');
+            key.position.z -= 1.0;
+            playSound('press'); // تولید صدای سایبرنتیک
+
+            // ۲. بازگشت فنری (Spring) کلید به حالت اول پس از ۱۲۰ میلی‌ثانیه
+            setTimeout(() => { 
+                key.position.z += 1.0; 
+                key.material.map = createHoloTexture(char, key.userData.isHovered ? 'hover' : 'normal');
+            }, 120);
+
+            // ۳. اجرای منطق کلیدها
+            if (char === "+") {
+                targetScale.multiplyScalar(1.15); // زوم این سینمایی (با Lerp در رندر لوپ)
+            } else if (char === "-") {
+                targetScale.multiplyScalar(0.85); // زوم اوت سینمایی
+            } else if (char === "CLR") {
+                typedText = "";
+                playSound('magic');
+            } else if (char === "SPACE") {
+                typedText += " ";
+            } else if (char === "ENT") {
+                typedText += " [EXEC] \n";
+            } else {
+                typedText += char;
+            }
+            
+            // آپدیت ترمینال اصلی روی صفحه
+            terminalOut.textContent = typedText || "_";
+        }
+
+        // تابع تشخیص ژست‌های جادویی و آوانگارد
+        function detectArcaneGestures(landmarks) {
+            const now = Date.now();
+
+            // =====================================
+            // ژست اول: بشکن زدن (Snap) برای پاک کردن سریع (Wipe Out)
+            // =====================================
+            // بشکن با آزاد شدن سریع تنش بین انگشت شست (۴) و میانی (۱۲) اتفاق می‌افتد
+            const currentMiddleThumbDist = getRawDistance(landmarks[4], landmarks[12]);
+            const snapVelocity = currentMiddleThumbDist - previousMiddleThumbDist;
+            
+            // اگر انگشت میانی و شست ناگهان با سرعت بالا از هم دور شوند (شتاب مثبت بالا)
+            if (snapVelocity > 0.12 && currentMiddleThumbDist > 0.15 && (now - snapCooldown > 1000)) {
+                snapCooldown = now;
+                
+                // افکت جادویی پاک شدن متن
+                typedText = "";
+                terminalOut.textContent = ">>> NEURAL DATA WIPED <<<";
+                terminalOut.style.color = "#ff00ff";
+                terminalOut.style.textShadow = "0 0 40px #ff00ff, 0 0 80px #ff00ff";
+                playSound('magic');
+                
+                // افکت لرزش و پرش کوتاه (Kickback) روی کل کیبورد
+                keyboardGroup.position.y += 1.5; 
+                
+                // بازگشت ترمینال به حالت عادی پس از ۸۰۰ میلی‌ثانیه
+                setTimeout(() => {
+                    terminalOut.style.color = "#fff";
+                    terminalOut.style.textShadow = "0 0 20px rgba(0, 249, 255, 0.8)";
+                    terminalOut.textContent = "_";
+                }, 800);
+            }
+            previousMiddleThumbDist = currentMiddleThumbDist;
+
+            // =====================================
+            // ژست دوم: چرخش مچ (Wrist Twist) برای تغییر حالت کیبورد
+            // =====================================
+            // محاسبه بردار نرمال کف دست با ضرب خارجی (Cross Product)
+            // با استفاده از مفاصل مچ (۰)، پایه اشاره (۵) و پایه انگشت کوچک (۱۷)
+            const wrist = new THREE.Vector3(landmarks[0].x, landmarks[0].y, landmarks[0].z);
+            const indexBase = new THREE.Vector3(landmarks[5].x, landmarks[5].y, landmarks[5].z);
+            const pinkyBase = new THREE.Vector3(landmarks[17].x, landmarks[17].y, landmarks[17].z);
+            
+            // ساخت دو بردار روی کف دست
+            const vectorA = new THREE.Vector3().subVectors(indexBase, wrist);
+            const vectorB = new THREE.Vector3().subVectors(pinkyBase, wrist);
+            
+            // بردار نرمال (عمود بر کف دست)
+            const palmNormal = new THREE.Vector3().crossVectors(vectorA, vectorB).normalize();
+
+            // بررسی چرخش شدید مچ (اگر نرمال در محور X برعکس شود یعنی دست چرخیده)
+            if (Math.abs(palmNormal.x) > 0.85 && (now - twistCooldown > 1500)) {
+                twistCooldown = now;
+                toggleCylinderMode();
+            }
+        }
+
+        // تابع تغییر شکل کیبورد (Morphing) به استوانه کدهای هکری
+        function toggleCylinderMode() {
+            isCylinderMode = !isCylinderMode;
+            playSound('magic');
+            
+            if (isCylinderMode) {
+                terminalOut.textContent = ">>> CYLINDER TERMINAL ACTIVE <<<";
+                terminalOut.style.color = "#39ff14"; // سبز ترمینالی
+                
+                // کیبورد جمع شده و حول محور X می‌چرخد
+                targetScale.set(0.6, 0.6, 0.6);
+                
+                // در پارت‌های بعدی، انیمیشن Morphing دقیق‌تری برای چیدمان دکمه‌ها می‌نویسیم
+                // فعلا کل کیبورد را در فضا می‌چرخانیم تا فیدبک بصری بدهیم
+                keysList.forEach((key, index) => {
+                    // یک افکت موج‌دار و پراکنده برای ورود به حالت استوانه
+                    setTimeout(() => {
+                        key.position.z -= Math.random() * 5;
+                    }, index * 10);
+                });
+
+            } else {
+                terminalOut.textContent = ">>> MATRIX KEYBOARD RESTORED <<<";
+                terminalOut.style.color = "#fff";
+                
+                targetScale.set(1, 1, 1);
+                
+                // بازگشت دکمه‌ها به جایگاه اصلی
+                keysList.forEach((key, index) => {
+                    setTimeout(() => {
+                        key.position.z = key.userData.originalZ || 0;
+                    }, index * 10);
+                });
+            }
+        }
+
+        // --- END OF PART 6 ---
+
+// ==========================================
+        // 11. AI VISION & NEURAL LINK (MEDIAPIPE)
+        // ==========================================
+        // راه‌اندازی هسته هوش مصنوعی گوگل برای درک فضایی
+        const hands = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
+        
+        // تنظیمات کمال‌گرایانه برای بالاترین دقت ممکن (High Precision Tracking)
+        hands.setOptions({ 
+            maxNumHands: 2, // فعال‌سازی حالت دو دست
+            modelComplexity: 1, // استفاده از مدل سنگین‌تر برای درک دقیق‌تر محور Z
+            minDetectionConfidence: 0.85, 
+            minTrackingConfidence: 0.85 
+        });
+        
+        // قلب تپنده هوش مصنوعی: پردازش فریم به فریم دیتای دوربین
+        hands.onResults(results => {
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                
+                // آپدیت وضعیت رابط کاربری (HUD) در صورت اتصال موفق
+                if (document.getElementById('bio-status').textContent.includes("SEARCHING")) {
+                    document.getElementById('bio-status').textContent = "LINK: ESTABLISHED";
+                    document.getElementById('bio-status').style.color = "#00f9ff";
+                    document.getElementById('bio-status').style.textShadow = "0 0 10px #00f9ff";
+                    
+                    if (typedText === "") {
+                        terminalOut.textContent = "_";
+                    }
+                }
+
+                // مدیریت تعداد دست‌ها
+                const detectedHands = results.multiHandLandmarks;
+                
+                // اگر دو دست تشخیص داده شد، بررسی ژست‌های ترکیبی
+                if (detectedHands.length === 2) {
+                    processDualGestures(detectedHands);
+                }
+
+                // پردازش فیزیک و تایپ برای هر دست به صورت جداگانه
+                detectedHands.forEach((landmarks, index) => {
+                    processHandPhysics(landmarks, index);
+                    
+                    // ژست‌های جادویی (فقط برای دست اول فعال باشد تا تداخل نکند)
+                    if (index === 0) detectArcaneGestures(landmarks);
+                });
+                
+            } else {
+                // اگر دست از کادر خارج شد (Loss of Signal)
+                // مخفی کردن اسکلت سایبرنتیک و خاموش کردن لیزر انگشت
+                joints.forEach(j => j.visible = false);
+                bones.forEach(b => b.visible = false);
+                pointerLights.forEach(l => l.intensity = 0);
+                
+                document.getElementById('bio-status').textContent = "LINK: SEARCHING...";
+                document.getElementById('bio-status').style.color = "gray";
+                document.getElementById('bio-status').style.textShadow = "none";
+                
+                // آزاد کردن قفل کلیک برای جلوگیری از گیر کردن شاتر
+                handStates.forEach(s => s.isClickPinching = false);
+            }
+        });
+
+        // راه‌اندازی پل ارتباطی بین دوربین دستگاه و شبکه عصبی
+        const cam = new Camera(videoElement, {
+            onFrame: async () => { 
+                await hands.send({image: videoElement}); 
+            },
+            width: 1280, 
+            height: 720
+        });
+        cam.start();
+
+        // ==========================================
+        // 12. CINEMATIC RENDER LOOP & POST-PROCESSING
+        // ==========================================
+        const clock = new THREE.Clock();
+        
+        function animate() {
+            requestAnimationFrame(animate);
+            const time = clock.getElapsedTime();
+            
+            // بررسی اینکه آیا هیچ دستی در حال درگ کردن نیست
+            const anyDragging = handStates.some(s => s.isDragging);
+
+            // ۱. انیمیشن تنفس (Breathing/Floating) برای کیبورد
+            // وقتی کیبورد در دست کاربر نیست، به صورت شناور در فضا موج می‌زند
+            if(!anyDragging && !isCylinderMode) {
+                // حرکت بسیار نرم در محور Y (بالا و پایین)
+                keyboardGroup.position.y += Math.sin(time * 2.5) * 0.003;
+                // چرخش بسیار ظریف در محور Z برای القای حس تعلیق در فضای سایبر
+                keyboardGroup.rotation.z = Math.sin(time * 1.5) * 0.015;
+            }
+
+            // ۲. انیمیشن حالت استوانه کدهای هکری (Arcane Gesture)
+            if (isCylinderMode) {
+                // وقتی کاربر مچ را می‌چرخاند، کیبورد تبدیل به استوانه‌ای چرخان می‌شود
+                keyboardGroup.rotation.y += 0.01;
+            }
+            
+            // ۳. اعمال زوم نرم (Cinematic Lerp Scaling)
+            // وقتی دکمه‌های + یا - فشرده می‌شوند، تغییر سایز خشک نیست، بلکه نرم است
+            currentScale.lerp(targetScale, 0.08); 
+            keyboardGroup.scale.copy(currentScale);
+            
+            // ۴. رندر نهایی صحنه در موتور WebGL
+            renderer.render(scene, camera);
+        }
+        
+        // استارت موتور رندر
+        animate();
+
+        // ==========================================
+        // 13. RESPONSIVE MATRIX (WINDOW RESIZE)
+        // ==========================================
+        // تطبیق داینامیک ابعاد محیط هولوگرافیک با چرخش گوشی یا تغییر سایز پنجره لپ‌تاپ
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            
+            // هوش تطبیقی: اگر کاربر با موبایل وارد شد، کیبورد خودکار کوچک‌تر می‌شود
+            if (window.innerWidth < 768) {
+                targetScale.set(0.65, 0.65, 0.65);
+            } else {
+                targetScale.set(1, 1, 1);
+            }
+        });
+
+        // --- END OF PART 7 ---
+
+// ==========================================
+        // 14. QUANTUM PARTICLE VFX ENGINE (GPU ACCELERATED)
+        // ==========================================
+        
+        const MAX_PARTICLES = 10000;
+        let particleIndex = 0;
+
+        // استفاده از BufferGeometry برای ارسال مستقیم داده‌ها به RAM کارت گرافیک (پرفورمنس خالص)
+        const particleGeo = new THREE.BufferGeometry();
+        
+        // آرایه‌های TypedArray برای محاسبات ریاضی با سرعت نور
+        const pPositions = new Float32Array(MAX_PARTICLES * 3);
+        const pVelocities = new Float32Array(MAX_PARTICLES * 3);
+        const pLifetimes = new Float32Array(MAX_PARTICLES);
+        const pColors = new Float32Array(MAX_PARTICLES * 3);
+
+        // مخفی کردن تمام ذرات در خارج از کادر دوربین در زمان شروع
+        for(let i=0; i<MAX_PARTICLES; i++) {
+            pPositions[i*3] = 9999; 
+            pPositions[i*3+1] = 9999;
+            pPositions[i*3+2] = 9999;
+            pLifetimes[i] = 0;
+        }
+
+        particleGeo.setAttribute('position', new THREE.BufferAttribute(pPositions, 3));
+        particleGeo.setAttribute('color', new THREE.BufferAttribute(pColors, 3));
+
+        // تولید تکسچر ستاره‌ای درخشان برای ذرات در مموری (بدون نیاز به عکس خارجی)
+        function createSparkTexture() {
+            const c = document.createElement('canvas');
+            c.width = 64; c.height = 64;
+            const ctx = c.getContext('2d');
+            
+            // ساخت گرادیانت نوری (Core سفید، هاله نئونی)
+            const grad = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+            grad.addColorStop(0, 'rgba(255, 255, 255, 1)');
+            grad.addColorStop(0.2, 'rgba(0, 249, 255, 0.9)');
+            grad.addColorStop(0.6, 'rgba(0, 249, 255, 0.2)');
+            grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+            
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, 64, 64);
+            
+            const tex = new THREE.CanvasTexture(c);
+            return tex;
+        }
+
+        // متریال نقاط نوری با سیستم Additive Blending برای درخشش روی هم
+        const particleMat = new THREE.PointsMaterial({
+            size: 0.8,
+            map: createSparkTexture(),
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false, // جلوگیری از باگ‌های رندرینگ شیشه
+            vertexColors: true
+        });
+
+        const particleSystem = new THREE.Points(particleGeo, particleMat);
+        scene.add(particleSystem);
+
+        // ==========================================
+        // 15. PARTICLE PHYSICS & COLLISION EMITTER
+        // ==========================================
+        
+        const gravity = new THREE.Vector3(0, -0.25, 0); // جاذبه فضای سایبرنتیک
+        const floorY = -15; // سطح شبکه نئونی کف (Tron Grid) که ذرات روی آن می‌پرند
+
+        // شلیک ذرات نوری از یک مختصات خاص
+        function emitQuantumSparks(localPos, char) {
+            // بین 40 تا 80 ذره با هر کلیک شلیک می‌شود
+            const count = Math.floor(40 + Math.random() * 40); 
+            
+            // تشخیص نوع دکمه برای تغییر رنگ جرقه‌ها (Color Morphing)
+            let r = 0.0, g = 0.97, b = 1.0; // رنگ پیش‌فرض: فیروزه‌ای نئونی (Cyan)
+            
+            if (char === 'CLR') {
+                r = 1.0; g = 0.0; b = 0.2; // قرمز هشدار برای پاک کردن
+            } else if (char === 'ENT' || char === '+') {
+                r = 0.2; g = 1.0; b = 0.1; // سبز ماتریکسی برای تایید و زوم
+            } else if (char === 'SPACE' || char === '-') {
+                r = 1.0; g = 0.0; b = 1.0; // ارغوانی (Magenta)
+            }
+
+            // ترجمه مختصات دکمه (که محلی است) به مختصات جهانی برای شلیک ذرات در هوای واقعی
+            const worldPos = new THREE.Vector3();
+            worldPos.copy(localPos);
+            keyboardGroup.localToWorld(worldPos);
+
+            for(let i=0; i<count; i++) {
+                let idx = particleIndex % MAX_PARTICLES; // سیستم Circular Buffer برای جلوگیری از مموری لیک
+                
+                // پخش تصادفی اولیه ذرات در محدوده دکمه
+                pPositions[idx*3] = worldPos.x + (Math.random() - 0.5) * 2;
+                pPositions[idx*3+1] = worldPos.y + (Math.random() - 0.5) * 2;
+                pPositions[idx*3+2] = worldPos.z + (Math.random() - 0.5) * 1;
+
+                // شتاب و انفجار (Explosion Velocity)
+                pVelocities[idx*3] = (Math.random() - 0.5) * 3; // پراکندگی در X
+                pVelocities[idx*3+1] = Math.random() * 2 + 1.5; // پرتاب رو به بالا (Y)
+                pVelocities[idx*3+2] = (Math.random() - 0.5) * 3 + 1.5; // پرتاب رو به سمت دوربین (Z)
+
+                pLifetimes[idx] = 1.0 + Math.random() * 0.5; // طول عمر بین 1 تا 1.5 ثانیه
+
+                // اعمال رنگ با کمی نویز تصادفی برای واقعی‌تر شدن آتش سایبرنتیک
+                pColors[idx*3] = Math.min(1, Math.max(0, r + (Math.random() - 0.5) * 0.3));
+                pColors[idx*3+1] = Math.min(1, Math.max(0, g + (Math.random() - 0.5) * 0.3));
+                pColors[idx*3+2] = Math.min(1, Math.max(0, b + (Math.random() - 0.5) * 0.3));
+
+                particleIndex++;
+            }
+        }
+
+        // ==========================================
+        // 16. PARALLEL VFX RENDER LOOP (DECOUPLED)
+        // ==========================================
+        const vfxClock = new THREE.Clock();
+        
+        function quantumVFXLoop() {
+            requestAnimationFrame(quantumVFXLoop);
+            const dt = vfxClock.getDelta();
+
+            // ۱. پردازش فیزیک ذرات
+            for(let i=0; i<MAX_PARTICLES; i++) {
+                if (pLifetimes[i] > 0) {
+                    pLifetimes[i] -= dt * 1.2; // محو شدن با گذر زمان
+                    
+                    // اعمال جاذبه و مقاومت هوا (Drag)
+                    pVelocities[i*3] *= 0.98; // اصطکاک هوا
+                    pVelocities[i*3+1] += gravity.y * dt * 80; // کشش جاذبه
+                    pVelocities[i*3+2] *= 0.98;
+
+                    // حرکت در فضا
+                    pPositions[i*3] += pVelocities[i*3] * dt * 12;
+                    pPositions[i*3+1] += pVelocities[i*3+1] * dt * 12;
+                    pPositions[i*3+2] += pVelocities[i*3+2] * dt * 12;
+
+                    // فیزیک برخورد با کف (Floor Bouncing)
+                    if (pPositions[i*3+1] < floorY) {
+                        pPositions[i*3+1] = floorY; // جلوگیری از رد شدن از زمین
+                        pVelocities[i*3+1] *= -0.6; // پرش با از دست دادن 40٪ انرژی
+                        
+                        // اصطکاک شدید روی زمین
+                        pVelocities[i*3] *= 0.7; 
+                        pVelocities[i*3+2] *= 0.7;
+                    }
+
+                    // اگر عمر ذره تمام شد، آن را به ناکجاآباد بفرست
+                    if(pLifetimes[i] <= 0) {
+                        pPositions[i*3] = 9999; 
+                    }
+                }
+            }
+            
+            // اعلام نیاز به رندر مجدد به GPU
+            particleGeo.attributes.position.needsUpdate = true;
+            particleGeo.attributes.color.needsUpdate = true;
+
+            // ۲. ناظر هوشمند فشردن کلیدها (بدون دستکاری کدهای قبلی)
+            keysList.forEach(key => {
+                if (key.userData.lastZ === undefined) key.userData.lastZ = key.position.z;
+                
+                // اگر دکمه در این فریم به طور ناگهانی بیش از 0.5 واحد در محور Z فرو رفت (یعنی کاربر کلیک کرد)
+                if (key.position.z < key.userData.lastZ - 0.5) {
+                    emitQuantumSparks(key.position, key.userData.char);
+                }
+                
+                // ذخیره وضعیت فعلی برای فریم بعدی
+                key.userData.lastZ = key.position.z;
+            });
+        }
+        
+        // استارت موتور فیزیک موازی
+        quantumVFXLoop();
+
+        // --- END OF PART 8 ---
+
+// ==========================================
+        // 17. NEURAL SWIPE TYPING (HOLOGRAPHIC TRAIL VFX)
+        // ==========================================
+        
+        const TRAIL_LENGTH = 18; // تعداد گره‌های مسیر (طول ردپای نوری)
+        const trailPositions = [];
+        
+        // مقداردهی اولیه گره‌ها در نقطه‌ای دور از دید دوربین
+        for(let i=0; i<TRAIL_LENGTH; i++) {
+            trailPositions.push(new THREE.Vector3(999, 999, 999));
+        }
+
+        // ایجاد یک منحنی ریاضی برای لوله نوری (جلوگیری از خطوط شکسته)
+        // نقاط با یک آفست میکروسکوپی مقداردهی می‌شوند تا منحنی CatmullRom کرش نکند
+        let trailCurve = new THREE.CatmullRomCurve3(
+            trailPositions.map((p, i) => new THREE.Vector3(p.x + i*0.001, p.y + i*0.001, p.z + i*0.001))
+        );
+        
+        // هندسه لوله نئونی (TubeGeometry)
+        let trailGeo = new THREE.TubeGeometry(trailCurve, TRAIL_LENGTH, 0.12, 8, false);
+        
+        // متریال وایرفریم سایبرپانکی برای ردپا
+        const trailMat = new THREE.MeshBasicMaterial({
+            color: 0x00f9ff, // آبی نئونی
+            transparent: true,
+            opacity: 0.2,
+            blending: THREE.AdditiveBlending,
+            wireframe: true // استایل شبکه سیمی (Tron Style)
+        });
+        
+        const trailMesh = new THREE.Mesh(trailGeo, trailMat);
+        scene.add(trailMesh);
+
+        // ==========================================
+        // 18. SWIPE LOGIC & WORD PREDICTION ENGINE
+        // ==========================================
+        let swipedWord = "";
+        let lastSwipedChar = "";
+        let isSwiping = false;
+        let swipeCooldown = 0;
+
+        function updateNeuralTrail(indexTipPos) {
+            // ۱. آپدیت آرایه مسیر: قدیمی‌ترین نقطه حذف و موقعیت فعلی انگشت اضافه می‌شود
+            trailPositions.shift();
+            trailPositions.push(indexTipPos.clone());
+
+            // ساخت آرایه امن برای محاسبات منحنی
+            const safePositions = trailPositions.map((p, i) => 
+                new THREE.Vector3(p.x + (i*0.001), p.y, p.z)
+            );
+
+            // ۲. آپدیت هندسه لوله سه‌بعدی (همراه با مدیریت حافظه برای جلوگیری از مموری لیک)
+            trailCurve = new THREE.CatmullRomCurve3(safePositions);
+            trailMesh.geometry.dispose(); // پاک کردن هندسه فریم قبل از RAM
+            trailMesh.geometry = new THREE.TubeGeometry(trailCurve, TRAIL_LENGTH, 0.15, 6, false);
+            trailMesh.visible = true;
+
+            // ۳. محاسبه سرعت برداری (Velocity) انگشت در فضا
+            // مقایسه نقطه فعلی با 3 فریم قبل برای به دست آوردن سرعت واقعی
+            const velocity = trailPositions[TRAIL_LENGTH-1].distanceTo(trailPositions[TRAIL_LENGTH-4]);
+
+            // =====================================
+            // منطق سوایپ (Swipe Mode Engagement)
+            // =====================================
+            // اگر سرعت حرکت بالا باشد و کاربر در حال درگ کردن کیبورد نباشد
+            const anyDragging = handStates.some(s => s.isDragging);
+            if (velocity > 0.8 && !anyDragging) {
+                isSwiping = true;
+                
+                // تغییر ظاهر لوله نئونی به حالت "اسکن فعال"
+                trailMat.color.setHex(0xff00ff); // تغییر رنگ به ارغوانی هجومی
+                trailMat.opacity = 0.8;
+                trailMat.wireframe = false; // تبدیل به لوله توپر درخشان
+                
+                // ترجمه مختصات انگشت به فضای داخلی کیبورد برای اسکن دکمه‌ها
+                const localPos = indexTipPos.clone();
+                keyboardGroup.worldToLocal(localPos);
+                
+                // اسکن تمام دکمه‌های ماتریس کیبورد
+                keysList.forEach(key => {
+                    const w = key.userData.width / 2;
+                    const h = key.userData.height / 2;
+                    
+                    // آیا لوله نوری از روی این دکمه عبور کرد؟
+                    if (Math.abs(localPos.x - key.position.x) < w && Math.abs(localPos.y - key.position.y) < h) {
+                        const char = key.userData.char;
+                        
+                        // ثبت حرف جدید (برای جلوگیری از ثبت تکراری یک حرف هنگام عبور کند)
+                        if (char !== lastSwipedChar && char.length === 1) {
+                            swipedWord += char;
+                            lastSwipedChar = char;
+                            
+                            // افکت بصری سریع (Micro-interaction) برای دکمه‌های مسیر سوایپ
+                            key.material.map = createHoloTexture(char, 'pressed');
+                            key.position.z -= 0.6; // فرو رفتن جزئی
+                            
+                            setTimeout(() => { 
+                                key.position.z += 0.6; 
+                                key.material.map = createHoloTexture(char, 'normal');
+                            }, 150);
+                            
+                            playSound('hover'); // صدای اسکن
+                            
+                            // نمایش کلمه در حال شکل‌گیری روی ترمینال به صورت Real-time
+                            terminalOut.textContent = typedText + " [" + swipedWord + "_]";
+                            terminalOut.style.color = "#ff00ff";
+                        }
+                    }
+                });
+
+            } else {
+                // =====================================
+                // پایان سوایپ و تزریق کلمه نهایی
+                // =====================================
+                // اگر سرعت افت کند (توقف انگشت) یعنی سوایپ تمام شده است
+                if (isSwiping && velocity < 0.2) {
+                    isSwiping = false;
+                    
+                    // بازگشت لوله نئونی به حالت عادی (استندبای)
+                    trailMat.color.setHex(0x00f9ff);
+                    trailMat.opacity = 0.15;
+                    trailMat.wireframe = true;
+                    
+                    if (swipedWord.length > 1) {
+                        // در یک موتور واقعی، اینجا کلمه به یک دیکشنری AI پاس داده می‌شود تا اصلاح شود.
+                        // ما مستقیماً کلمه اسکن شده را به رشته متنی اضافه می‌کنیم.
+                        typedText += (typedText.endsWith(" ") ? "" : " ") + swipedWord + " ";
+                        
+                        playSound('unlock');
+                        
+                        // شلیک ذرات کوانتومی (پارت ۸) از مرکز کیبورد به عنوان تایید موفقیت سوایپ
+                        emitQuantumSparks(new THREE.Vector3(0,0,0), 'ENT');
+                        
+                        // ریست کردن ترمینال
+                        terminalOut.style.color = "#fff";
+                        terminalOut.textContent = typedText;
+                    } else if (swipedWord.length > 0) {
+                        // اگر فقط از روی یک حرف رد شد، آن را نادیده می‌گیریم تا خطای ناخواسته پیش نیاید
+                        terminalOut.style.color = "#fff";
+                        terminalOut.textContent = typedText || "_";
+                    }
+                    
+                    // پاک کردن حافظه کلمه
+                    swipedWord = "";
+                    lastSwipedChar = "";
+                }
+            }
+        }
+
+        // ==========================================
+        // 19. PARALLEL SWIPE OBSERVER LOOP
+        // ==========================================
+        // این حلقه به صورت مستقل از حلقه رندر اصلی، فقط وظیفه پایش ردپای عصبی را دارد
+        function neuralSwipeLoop() {
+            requestAnimationFrame(neuralSwipeLoop);
+            
+            // چک کردن اینکه آیا هوش مصنوعی مدیاپایپ دست را شناخته و مفاصل مقدار گرفته‌اند یا خیر
+            if (joints && joints[8] && joints[8].visible) {
+                updateNeuralTrail(joints[8].position);
+            } else {
+                // اگر دست خارج از کادر است، لوله نئونی را کاملا مخفی کن تا در فضا معلق نماند
+                trailMesh.visible = false;
+                
+                // ریست کردن موقعیت‌ها به ناکجاآباد
+                for(let i=0; i<TRAIL_LENGTH; i++) {
+                    trailPositions[i].set(999, 999, 999);
+                }
+            }
+        }
+        
+        // استارت موتور ناظر سوایپ
+        neuralSwipeLoop();
+
+        // --- END OF PART 9 ---
+
+// ==========================================
+        // 20. GLOBAL ILLUMINATION & CINEMATIC POST-FX
+        // ==========================================
+        // سیستم فلش نوری برای رویدادهای بزرگ (مثل بشکن زدن یا سوایپ موفق)
+        let targetAmbientIntensity = 0.3; // شدت نور پایه
+        
+        function triggerCinematicFlash(colorHex, intensity) {
+            ambientLight.color.setHex(colorHex);
+            ambientLight.intensity = intensity;
+            targetAmbientIntensity = 0.3; // بازگشت نرم به حالت تاریک در رندر لوپ
+            
+            // یک افکت نویز روی صفحه (Glitch)
+            document.body.style.filter = "contrast(1.5) saturate(2) hue-rotate(90deg)";
+            setTimeout(() => {
+                document.body.style.filter = "none";
+            }, 80);
+        }
+
+        // تزریق فلش به حلقه رندر اصلی (باید در رندر لوپ Three.js اعمال شود)
+        // ما از تابع setInterval موازی استفاده می‌کنیم تا لوپ قبلی دست نخورد
+        setInterval(() => {
+            if (ambientLight.intensity > targetAmbientIntensity) {
+                // بازگشت نرم (Lerp) شدت نور به حالت سایبرپانک تاریک
+                ambientLight.intensity -= (ambientLight.intensity - targetAmbientIntensity) * 0.1;
+                
+                // بازگشت رنگ نور به سفید یخی پس از فلش
+                if (ambientLight.intensity < 0.5) {
+                    ambientLight.color.lerp(new THREE.Color(0xffffff), 0.1);
+                }
+            }
+        }, 16); // ~60fps
+
+        // اتصال فلش به ژست‌های جادویی (Override توابع قبلی به صورت پویا)
+        const originalFireKeyPress = fireKeyPress;
+        fireKeyPress = function(key) {
+            originalFireKeyPress(key);
+            if (key.userData.char === "ENT" || key.userData.char === "CLR") {
+                triggerCinematicFlash(0xff00ff, 2.0); // فلش ارغوانی برای دستورات اصلی
+            }
+        };
+
+        // ==========================================
+        // 21. QUANTUM WEBSOCKET BRIDGE (BACKEND LINK)
+        // ==========================================
+        // کلاس حرفه‌ای برای اتصال رابط AR به سرورهای ابری و دستیارهای هوشمند
+        class NeuralSocketBridge {
+            constructor(url) {
+                this.url = url;
+                this.socket = null;
+                this.isConnected = false;
+                this.reconnectAttempts = 0;
+            }
+
+            connect() {
+                try {
+                    this.socket = new WebSocket(this.url);
+                    
+                    this.socket.onopen = () => {
+                        this.isConnected = true;
+                        this.reconnectAttempts = 0;
+                        console.log(">>> QUANTUM BRIDGE ESTABLISHED WITH CORE SERVER <<<");
+                        
+                        // ارسال سیگنال بیداری به سیستم‌های متصل
+                        this.transmit({
+                            event: 'SYSTEM_BOOT',
+                            authLevel: document.getElementById('auth-level').textContent,
+                            timestamp: Date.now()
+                        });
+                    };
+
+                    this.socket.onclose = () => {
+                        this.isConnected = false;
+                        console.warn(">>> BRIDGE DISCONNECTED. RETRYING IN 3s... <<<");
+                        // تلاش مجدد برای اتصال هوشمند
+                        if (this.reconnectAttempts < 5) {
+                            setTimeout(() => this.connect(), 3000);
+                            this.reconnectAttempts++;
+                        }
+                    };
+
+                    this.socket.onerror = (err) => {
+                        console.error(">>> NEURAL LINK ERROR <<<", err);
+                    };
+
+                } catch (error) {
+                    console.error(">>> FAILED TO INITIALIZE SOCKET <<<", error);
+                }
+            }
+
+            // متد ارسال داده‌ها در لحظه (Zero-Latency Transmission)
+            transmit(payload) {
+                if (this.isConnected && this.socket.readyState === WebSocket.OPEN) {
+                    // رمزنگاری اولیه (Stringify) برای ارسال به سرور 
+                    this.socket.send(JSON.stringify(payload));
+                }
+            }
+        }
+
+        // ایجاد پل ارتباطی با سرور 
+        // (این آدرس برای استقرار نهایی به WSS سرور اصلی تغییر می‌کند)
+        const arcBridge = new NeuralSocketBridge('wss://localhost:8080/matrix-stream');
+        arcBridge.connect();
+
+        // اتصال ارسال داده به تایپ هولوگرافیک
+        // با هر بار فاصله (Space) یا اینتر (ENT)، کلمه آخر به سرور ارسال می‌شود
+        let previousTextLength = 0;
+        setInterval(() => {
+            if (typedText.length > previousTextLength) {
+                const newContent = typedText.slice(previousTextLength);
+                if (newContent.includes(" ") || newContent.includes("\n")) {
+                    arcBridge.transmit({
+                        event: 'HOLO_KEYSTROKE',
+                        data: newContent.trim(),
+                        mode: isCylinderMode ? 'CYLINDER_HACK' : 'MATRIX_NORMAL'
+                    });
+                    previousTextLength = typedText.length;
+                }
+            } else if (typedText.length < previousTextLength) {
+                // اگر متن پاک شد (مثلا با ژست بشکن)
+                previousTextLength = typedText.length;
+                arcBridge.transmit({ event: 'TEXT_WIPED' });
+            }
+        }, 200);
+
+        // ==========================================
+        // 22. SYSTEM BOOT SEQUENCE
+        // ==========================================
+        // سکانس سینمایی بالا آمدن سیستم
+        window.onload = () => {
+            const output = document.getElementById('typed-output');
+            const bootSequence = [
+                "INITIALIZING NEURAL KERNEL...",
+                "BYPASSING FIREWALLS...",
+                "LOADING HOLOGRAPHIC MATRICES...",
+                "CALIBRATING OPTICAL SENSORS...",
+                "ARC MATRIX ONLINE."
+            ];
+            
+            let i = 0;
+            output.textContent = "";
+            output.style.color = "#39ff14"; // سبز هکری
+            
+            const bootInterval = setInterval(() => {
+                if (i < bootSequence.length) {
+                    output.textContent = bootSequence[i];
+                    playSound('hover');
+                    i++;
+                } else {
+                    clearInterval(bootInterval);
+                    setTimeout(() => {
+                        output.style.color = "#fff"; // بازگشت به سفید
+                        output.textContent = "AWAITING HAND SIGNAL";
+                        typedText = ""; // ریست کردن متن
+                        triggerCinematicFlash(0x00f9ff, 3.0); // فلش آبی بزرگ هنگام اتمام لود
+                    }, 1000);
+                }
+            }, 400); // سرعت اجرای خطوط بوت
+        };
+
+    </script>
+</body>
+</html>
